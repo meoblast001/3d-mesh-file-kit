@@ -16,13 +16,28 @@ with this program. If not, see <http://www.gnu.org/licenses/>.
 
 module Data.Mesh3D.MD2 ( load ) where
 
+import Control.Applicative
+import Control.Monad
 import Data.Binary.Get
-import Data.ByteString.Lazy
+import Data.Binary.IEEE754
+import qualified Data.ByteString.Lazy as LBS
 import Data.Mesh3D
+import Language.Haskell.TH.Ppr
 
-load :: ByteString -> Maybe Mesh3D
+load :: LBS.ByteString -> Maybe Mesh3D
 load data_in =
-  let main_monad = do
+  let
+      load_frames 0 = return []
+      load_frames remaining_frames = do
+        scale <- liftM3 (,,) getFloat32le getFloat32le getFloat32le
+        translate <- liftM3 (,,) getFloat32le getFloat32le getFloat32le
+        name <- bytesToString . (takeWhile (/= 0)) <$>
+                mapM (const getWord8) [1..8]
+
+        remaining <- getRemainingLazyByteString
+        return $ Frame { name = name }:
+                (runGet (load_frames (remaining_frames - 1)) remaining)
+      main_func = do
         ident <- getWord32le
         version <- getWord32le
 
@@ -31,24 +46,26 @@ load data_in =
 
         frame_size <- getWord32le
 
-        num_skins <- getWord32le
-        num_verts <- getWord32le
-        num_tex_coords <- getWord32le
-        num_tris <- getWord32le
-        num_glcmds <- getWord32le
-        num_frames <- getWord32le
+        num_skins <- fromIntegral <$> getWord32le
+        num_verts <- fromIntegral <$> getWord32le
+        num_tex_coords <- fromIntegral <$> getWord32le
+        num_tris <- fromIntegral <$> getWord32le
+        num_glcmds <- fromIntegral <$> getWord32le
+        num_frames <- fromIntegral <$> getWord32le
 
-        offset_skins <- getWord32le
-        offset_tex_coords <- getWord32le
-        offset_tris <- getWord32le
-        offset_frames <- getWord32le
-        offset_gl_commands <- getWord32le
-        offset_end <- getWord32le
+        offset_skins <- fromIntegral <$> getWord32le
+        offset_tex_coords <- fromIntegral <$> getWord32le
+        offset_tris <- fromIntegral <$> getWord32le
+        offset_frames <- fromIntegral <$> getWord32le
+        offset_gl_commands <- fromIntegral <$> getWord32le
+        offset_end <- fromIntegral <$> getWord32le
 
         if ident == 844121161 then -- "IDP2" as integer.
           return $ Just Mesh3D {
-              textureSize = (fromIntegral skin_width, fromIntegral skin_height)
+              textureSize = (fromIntegral skin_width, fromIntegral skin_height),
+              frames = runGet (load_frames num_frames)
+                              (LBS.drop offset_frames data_in)
             }
         else
           return Nothing
-  in runGet main_monad data_in
+  in runGet main_func data_in

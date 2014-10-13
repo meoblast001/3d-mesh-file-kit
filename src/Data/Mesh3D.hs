@@ -14,9 +14,18 @@ You should have received a copy of the GNU Lesser General Public License along
 with this program. If not, see <http://www.gnu.org/licenses/>.
 -}
 
-module Data.Mesh3D ( Mesh3D(..) ) where
+module Data.Mesh3D
+( Mesh3D(..)
+, Frame(..)
+) where
+
+data Frame =
+  Frame
+  { name :: String }
+  deriving (Show)
 
 data Mesh3D =
   Mesh3D
-  { textureSize :: (Int, Int) }
+  { textureSize :: (Int, Int)
+  , frames :: [Frame] }
   deriving (Show)
