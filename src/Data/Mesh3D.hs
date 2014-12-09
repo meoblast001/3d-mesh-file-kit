@@ -16,12 +16,20 @@ with this program. If not, see <http://www.gnu.org/licenses/>.
 
 module Data.Mesh3D
 ( Mesh3D(..)
+, Vertex(..)
 , Frame(..)
 ) where
 
+data Vertex =
+  Vertex
+  { position :: (Float, Float, Float)
+  , normal :: (Float, Float, Float) }
+  deriving (Show)
+
 data Frame =
   Frame
-  { name :: String }
+  { name :: String
+  , vertices :: [Vertex] }
   deriving (Show)
 
 data Mesh3D =
