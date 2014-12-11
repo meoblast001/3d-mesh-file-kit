@@ -17,23 +17,41 @@ with this program. If not, see <http://www.gnu.org/licenses/>.
 module Data.Mesh3D
 ( Mesh3D(..)
 , Vertex(..)
+, TextureCoordinates(..)
+, Triangle(..)
 , Frame(..)
 ) where
 
 data Vertex =
   Vertex
-  { position :: (Float, Float, Float)
-  , normal :: (Float, Float, Float) }
+  { vertPosition :: (Float, Float, Float)
+  , vertNormal :: (Float, Float, Float) }
+  deriving (Show)
+
+data TextureCoordinates =
+  TextureCoordinates
+  { texCoordX :: Float
+  , texCoordY :: Float }
+  deriving (Show)
+
+data Triangle =
+  Triangle
+  { triVertexIndices :: (Int, Int, Int)
+  , triTextureCoordinates :: (TextureCoordinates, TextureCoordinates,
+                           TextureCoordinates)
+  , triTextureCoordinateIndices :: (Int, Int, Int) }
   deriving (Show)
 
 data Frame =
   Frame
-  { name :: String
-  , vertices :: [Vertex] }
+  { frameName :: String
+  , frameVertices :: [Vertex] }
   deriving (Show)
 
 data Mesh3D =
   Mesh3D
   { textureSize :: (Int, Int)
-  , frames :: [Frame] }
+  , frames :: [Frame]
+  , texCoords :: [TextureCoordinates]
+  , triangles :: [Triangle]}
   deriving (Show)

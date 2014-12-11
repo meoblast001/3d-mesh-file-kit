@@ -215,11 +215,18 @@ load data_in =
         offset_gl_commands <- fromIntegral <$> getWord32le
         offset_end <- fromIntegral <$> getWord32le
 
+        let tex_coords = runGet (loadTexCoords num_tex_coords skin_width
+                                               skin_height)
+                                (LBS.drop offset_tex_coords data_in)
+
         if ident == 844121161 then -- "IDP2" as integer.
           return $ Just Mesh3D {
               textureSize = (skin_width, skin_height),
               frames = runGet (loadFrames num_frames num_verts)
-                              (LBS.drop offset_frames data_in)
+                              (LBS.drop offset_frames data_in),
+              texCoords = tex_coords,
+              triangles = runGet (loadTriangles num_tris tex_coords)
+                                 (LBS.drop offset_tris data_in)
             }
         else
           return Nothing
@@ -235,8 +242,8 @@ loadFrames remaining_frames num_vertices = do
 
   remaining <- getRemainingLazyByteString
   return $ Frame {
-      name = name,
-      vertices = vertices
+      frameName = name,
+      frameVertices = vertices
     }:(runGet (loadFrames (remaining_frames - 1) num_vertices) remaining)
 
 loadVertices :: Int -> (Float, Float, Float) -> (Float, Float, Float) ->
@@ -252,6 +259,39 @@ loadVertices remaining_verts scale@(sx, sy, sz) translate@(tx, ty, tz) = do
 
   remaining <- getRemainingLazyByteString
   return $ Vertex {
-      position = position,
-      normal = normal
+      vertPosition = position,
+      vertNormal = normal
     }:(runGet (loadVertices (remaining_verts - 1) scale translate) remaining)
+
+loadTexCoords :: Int -> Int -> Int -> Get [TextureCoordinates]
+loadTexCoords 0 _ _ = return []
+loadTexCoords remaining_tex_coords skin_width skin_height = do
+  s <- fmap (\x -> x / fromIntegral skin_width) $ fromIntegral <$> getWord16le
+  t <- fmap (\x -> x / fromIntegral skin_height) $ fromIntegral <$> getWord16le
+
+  remaining <- getRemainingLazyByteString
+  return $ TextureCoordinates {
+      texCoordX = s,
+      texCoordY = t
+    }:(runGet (loadTexCoords (remaining_tex_coords - 1) skin_width skin_height)
+              remaining)
+
+loadTriangles :: Int -> [TextureCoordinates] -> Get [Triangle]
+loadTriangles 0 _ = return []
+loadTriangles remaining_tris tex_coords = do
+  vert_indices@(vi1, vi2, vi3) <- liftM3 (,,) (fromIntegral <$> getWord16le)
+                                              (fromIntegral <$> getWord16le)
+                                              (fromIntegral <$> getWord16le)
+  tex_coord_indicies@(tc1, tc2, tc3) <- liftM3 (,,)
+                                               (fromIntegral <$> getWord16le)
+                                               (fromIntegral <$> getWord16le)
+                                               (fromIntegral <$> getWord16le)
+
+  remaining <- getRemainingLazyByteString
+  return $ Triangle {
+      triVertexIndices = vert_indices,
+      -- TODO: Test for bounds errors.
+      triTextureCoordinates = (tex_coords !! tc1, tex_coords !! tc2,
+                               tex_coords !! tc3),
+      triTextureCoordinateIndices = tex_coord_indicies
+    }:(runGet (loadTriangles (remaining_tris - 1) tex_coords) remaining)
