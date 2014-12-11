@@ -192,37 +192,7 @@ normalVectors = [
 
 load :: LBS.ByteString -> Maybe Mesh3D
 load data_in =
-  let
-      load_vertices 0 _ _ = return []
-      load_vertices remaining_verts scale@(sx, sy, sz)
-                    translate@(tx, ty, tz) = do
-        let transform s_coord t_coord coord = coord * s_coord + t_coord
-        position <- liftM3 (,,) (transform sx tx <$> fromIntegral <$> getWord8)
-                                (transform sy ty <$> fromIntegral <$> getWord8)
-                                (transform sz tz <$> fromIntegral <$> getWord8)
-        -- TODO: Test for bounds errors.
-        normal <- fmap (\i -> normalVectors !! i) (fromIntegral <$> getWord8)
-
-        remaining <- getRemainingLazyByteString
-        return $ Vertex {
-            position = position,
-            normal = normal
-          }:(runGet (load_vertices (remaining_verts - 1) scale translate)
-                    remaining)
-      load_frames 0 _ = return []
-      load_frames remaining_frames num_vertices = do
-        scale <- liftM3 (,,) getFloat32le getFloat32le getFloat32le
-        translate <- liftM3 (,,) getFloat32le getFloat32le getFloat32le
-        name <- bytesToString . (takeWhile (/= 0)) <$>
-                mapM (const getWord8) [1..8]
-        vertices <- load_vertices num_vertices scale translate
-
-        remaining <- getRemainingLazyByteString
-        return $ Frame {
-            name = name,
-            vertices = vertices
-          }:(runGet (load_frames (remaining_frames - 1) num_vertices) remaining)
-      main_func = do
+  let main_func = do
         ident <- getWord32le
         version <- getWord32le
 
@@ -248,9 +218,40 @@ load data_in =
         if ident == 844121161 then -- "IDP2" as integer.
           return $ Just Mesh3D {
               textureSize = (skin_width, skin_height),
-              frames = runGet (load_frames num_frames num_verts)
+              frames = runGet (loadFrames num_frames num_verts)
                               (LBS.drop offset_frames data_in)
             }
         else
           return Nothing
   in runGet main_func data_in
+
+loadFrames :: Int -> Int -> Get [Frame]
+loadFrames 0 _ = return []
+loadFrames remaining_frames num_vertices = do
+  scale <- liftM3 (,,) getFloat32le getFloat32le getFloat32le
+  translate <- liftM3 (,,) getFloat32le getFloat32le getFloat32le
+  name <- bytesToString . (takeWhile (/= 0)) <$> mapM (const getWord8) [1..8]
+  vertices <- loadVertices num_vertices scale translate
+
+  remaining <- getRemainingLazyByteString
+  return $ Frame {
+      name = name,
+      vertices = vertices
+    }:(runGet (loadFrames (remaining_frames - 1) num_vertices) remaining)
+
+loadVertices :: Int -> (Float, Float, Float) -> (Float, Float, Float) ->
+                Get [Vertex]
+loadVertices 0 _ _ = return []
+loadVertices remaining_verts scale@(sx, sy, sz) translate@(tx, ty, tz) = do
+  let transform s_coord t_coord coord = coord * s_coord + t_coord
+  position <- liftM3 (,,) (transform sx tx <$> fromIntegral <$> getWord8)
+                          (transform sy ty <$> fromIntegral <$> getWord8)
+                          (transform sz tz <$> fromIntegral <$> getWord8)
+  -- TODO: Test for bounds errors.
+  normal <- fmap (\i -> normalVectors !! i) (fromIntegral <$> getWord8)
+
+  remaining <- getRemainingLazyByteString
+  return $ Vertex {
+      position = position,
+      normal = normal
+    }:(runGet (loadVertices (remaining_verts - 1) scale translate) remaining)
