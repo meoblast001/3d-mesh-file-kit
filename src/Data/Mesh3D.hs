@@ -38,7 +38,7 @@ data Triangle =
   Triangle
   { triVertexIndices :: (Int, Int, Int)
   , triTextureCoordinates :: (TextureCoordinates, TextureCoordinates,
-                           TextureCoordinates)
+                              TextureCoordinates)
   , triTextureCoordinateIndices :: (Int, Int, Int) }
   deriving (Show)
 

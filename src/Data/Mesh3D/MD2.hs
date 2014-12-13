@@ -190,7 +190,10 @@ normalVectors = [
     (-0.688191, -0.587785, -0.425325)
   ]
 
-load :: LBS.ByteString -> Maybe Mesh3D
+data LoadError = InvalidIdentifier | NormalNotFound | TextureCoordinatesNotFound
+  deriving (Show)
+
+load :: LBS.ByteString -> Either LoadError Mesh3D
 load data_in =
   let main_func = do
         ident <- getWord32le
@@ -215,53 +218,71 @@ load data_in =
         offset_gl_commands <- fromIntegral <$> getWord32le
         offset_end <- fromIntegral <$> getWord32le
 
-        let tex_coords = runGet (loadTexCoords num_tex_coords skin_width
+        let frames_e = sequence $ runGet (loadFrames num_frames num_verts)
+                                         (LBS.drop offset_frames data_in)
+            tex_coords = runGet (loadTexCoords num_tex_coords skin_width
                                                skin_height)
                                 (LBS.drop offset_tex_coords data_in)
+            triangles_e = sequence $ runGet (loadTriangles num_tris tex_coords)
+                                            (LBS.drop offset_tris data_in)
 
-        if ident == 844121161 then -- "IDP2" as integer.
-          return $ Just Mesh3D {
-              textureSize = (skin_width, skin_height),
-              frames = runGet (loadFrames num_frames num_verts)
-                              (LBS.drop offset_frames data_in),
-              texCoords = tex_coords,
-              triangles = runGet (loadTriangles num_tris tex_coords)
-                                 (LBS.drop offset_tris data_in)
-            }
+        if ident == 844121161 then do -- "IDP2" as integer.
+          case (frames_e, triangles_e) of
+            (Right frames, Right triangles) ->
+              return $ Right Mesh3D {
+                  textureSize = (skin_width, skin_height),
+                  frames = frames,
+                  texCoords = tex_coords,
+                  triangles = triangles
+                }
+            (Left error, _) -> return $ Left error
+            (_, Left error) -> return $ Left error
         else
-          return Nothing
+          return $ Left InvalidIdentifier
   in runGet main_func data_in
 
-loadFrames :: Int -> Int -> Get [Frame]
+loadFrames :: Int -> Int -> Get [Either LoadError Frame]
 loadFrames 0 _ = return []
 loadFrames remaining_frames num_vertices = do
   scale <- liftM3 (,,) getFloat32le getFloat32le getFloat32le
   translate <- liftM3 (,,) getFloat32le getFloat32le getFloat32le
   name <- bytesToString . (takeWhile (/= 0)) <$> mapM (const getWord8) [1..8]
-  vertices <- loadVertices num_vertices scale translate
+  vertices_e <- sequence <$> loadVertices num_vertices scale translate
 
   remaining <- getRemainingLazyByteString
-  return $ Frame {
-      frameName = name,
-      frameVertices = vertices
-    }:(runGet (loadFrames (remaining_frames - 1) num_vertices) remaining)
+  let rest = runGet (loadFrames (remaining_frames - 1) num_vertices) remaining
+
+  case vertices_e of
+    Right vertices ->
+      return $ Right Frame {
+          frameName = name,
+          frameVertices = vertices
+        }:rest
+    Left error -> return $ Left error:rest
 
 loadVertices :: Int -> (Float, Float, Float) -> (Float, Float, Float) ->
-                Get [Vertex]
+                Get [Either LoadError Vertex]
 loadVertices 0 _ _ = return []
 loadVertices remaining_verts scale@(sx, sy, sz) translate@(tx, ty, tz) = do
   let transform s_coord t_coord coord = coord * s_coord + t_coord
   position <- liftM3 (,,) (transform sx tx <$> fromIntegral <$> getWord8)
                           (transform sy ty <$> fromIntegral <$> getWord8)
                           (transform sz tz <$> fromIntegral <$> getWord8)
-  -- TODO: Test for bounds errors.
-  normal <- fmap (\i -> normalVectors !! i) (fromIntegral <$> getWord8)
+  normal_m <- fmap (\i -> if i < length normalVectors
+                          then Just (normalVectors !! i)
+                          else Nothing) (fromIntegral <$> getWord8)
 
   remaining <- getRemainingLazyByteString
-  return $ Vertex {
-      vertPosition = position,
-      vertNormal = normal
-    }:(runGet (loadVertices (remaining_verts - 1) scale translate) remaining)
+  let rest = runGet (loadVertices (remaining_verts - 1) scale translate)
+                    remaining
+
+  case normal_m of
+    Just normal ->
+     return $ (Right $ Vertex {
+          vertPosition = position,
+          vertNormal = normal
+        }):rest
+    Nothing -> return $ (Left NormalNotFound):rest
 
 loadTexCoords :: Int -> Int -> Int -> Get [TextureCoordinates]
 loadTexCoords 0 _ _ = return []
@@ -276,7 +297,7 @@ loadTexCoords remaining_tex_coords skin_width skin_height = do
     }:(runGet (loadTexCoords (remaining_tex_coords - 1) skin_width skin_height)
               remaining)
 
-loadTriangles :: Int -> [TextureCoordinates] -> Get [Triangle]
+loadTriangles :: Int -> [TextureCoordinates] -> Get [Either LoadError Triangle]
 loadTriangles 0 _ = return []
 loadTriangles remaining_tris tex_coords = do
   vert_indices@(vi1, vi2, vi3) <- liftM3 (,,) (fromIntegral <$> getWord16le)
@@ -286,12 +307,19 @@ loadTriangles remaining_tris tex_coords = do
                                                (fromIntegral <$> getWord16le)
                                                (fromIntegral <$> getWord16le)
                                                (fromIntegral <$> getWord16le)
+  let selected_tex_coords_n = if and $ map (< length tex_coords) [tc1, tc2, tc3]
+                              then Just (tex_coords !! tc1, tex_coords !! tc2,
+                                         tex_coords !! tc3)
+                              else Nothing
 
   remaining <- getRemainingLazyByteString
-  return $ Triangle {
-      triVertexIndices = vert_indices,
-      -- TODO: Test for bounds errors.
-      triTextureCoordinates = (tex_coords !! tc1, tex_coords !! tc2,
-                               tex_coords !! tc3),
-      triTextureCoordinateIndices = tex_coord_indicies
-    }:(runGet (loadTriangles (remaining_tris - 1) tex_coords) remaining)
+  let rest = runGet (loadTriangles (remaining_tris - 1) tex_coords) remaining
+
+  case selected_tex_coords_n of
+    Just selected_tex_coords ->
+      return $ (Right $ Triangle {
+          triVertexIndices = vert_indices,
+          triTextureCoordinates = selected_tex_coords,
+          triTextureCoordinateIndices = tex_coord_indicies
+        }):rest
+    Nothing -> return $ (Left TextureCoordinatesNotFound):rest
