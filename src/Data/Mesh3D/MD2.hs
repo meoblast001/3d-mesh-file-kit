@@ -227,16 +227,7 @@ load data_in =
                                             (LBS.drop offset_tris data_in)
 
         if ident == 844121161 then do -- "IDP2" as integer.
-          case (frames_e, triangles_e) of
-            (Right frames, Right triangles) ->
-              return $ Right Mesh3D {
-                  textureSize = (skin_width, skin_height),
-                  frames = frames,
-                  texCoords = tex_coords,
-                  triangles = triangles
-                }
-            (Left error, _) -> return $ Left error
-            (_, Left error) -> return $ Left error
+          return $ Mesh3D (skin_width, skin_height) <$> frames_e <*> return tex_coords <*> triangles_e
         else
           return $ Left InvalidIdentifier
   in runGet main_func data_in
