@@ -226,7 +226,7 @@ load data_in =
             triangles_e = sequence $ runGet (loadTriangles num_tris tex_coords)
                                             (LBS.drop offset_tris data_in)
 
-        if ident == 844121161 then do -- "IDP2" as integer.
+        if ident == 844121161 then -- "IDP2" as integer.
           return $
             Mesh3D (skin_width, skin_height)
             <$> frames_e
@@ -241,7 +241,7 @@ loadFrames 0 _ = return []
 loadFrames remaining_frames num_vertices = do
   scale <- liftM3 (,,) getFloat32le getFloat32le getFloat32le
   translate <- liftM3 (,,) getFloat32le getFloat32le getFloat32le
-  name <- bytesToString . (takeWhile (/= 0)) <$> mapM (const getWord8) [1..8]
+  name <- bytesToString . takeWhile (/= 0) <$> mapM (const getWord8) [1..8]
   vertices_e <- sequence <$> loadVertices num_vertices scale translate
 
   remaining <- getRemainingLazyByteString
@@ -273,11 +273,11 @@ loadVertices remaining_verts scale@(sx, sy, sz) translate@(tx, ty, tz) = do
 
   case normal_m of
     Just normal ->
-     return $ (Right $ Vertex {
+     return $ Right Vertex {
           vertPosition = position,
           vertNormal = normal
-        }):rest
-    Nothing -> return $ (Left NormalNotFound):rest
+        }:rest
+    Nothing -> return $ Left NormalNotFound:rest
 
 loadTexCoords :: Int -> Int -> Int -> Get [TextureCoordinates]
 loadTexCoords 0 _ _ = return []
@@ -289,8 +289,8 @@ loadTexCoords remaining_tex_coords skin_width skin_height = do
   return $ TextureCoordinates {
       texCoordX = s,
       texCoordY = t
-    }:(runGet (loadTexCoords (remaining_tex_coords - 1) skin_width skin_height)
-              remaining)
+    }:runGet (loadTexCoords (remaining_tex_coords - 1) skin_width skin_height)
+              remaining
 
 loadTriangles :: Int -> [TextureCoordinates] -> Get [Either LoadError Triangle]
 loadTriangles 0 _ = return []
@@ -302,7 +302,7 @@ loadTriangles remaining_tris tex_coords = do
                                                (fromIntegral <$> getWord16le)
                                                (fromIntegral <$> getWord16le)
                                                (fromIntegral <$> getWord16le)
-  let selected_tex_coords_n = if and $ map (< length tex_coords) [tc1, tc2, tc3]
+  let selected_tex_coords_n = if all (< length tex_coords) [tc1, tc2, tc3]
                               then Just (tex_coords !! tc1, tex_coords !! tc2,
                                          tex_coords !! tc3)
                               else Nothing
@@ -312,9 +312,9 @@ loadTriangles remaining_tris tex_coords = do
 
   case selected_tex_coords_n of
     Just selected_tex_coords ->
-      return $ (Right $ Triangle {
+      return $ Right Triangle {
           triVertexIndices = vert_indices,
           triTextureCoordinates = selected_tex_coords,
           triTextureCoordinateIndices = tex_coord_indicies
-        }):rest
-    Nothing -> return $ (Left TextureCoordinatesNotFound):rest
+        }:rest
+    Nothing -> return $ Left TextureCoordinatesNotFound:rest
