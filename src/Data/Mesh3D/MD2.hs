@@ -191,7 +191,7 @@ normalVectors = [
   ]
 
 data LoadError = InvalidIdentifier | NormalNotFound | TextureCoordinatesNotFound
-  deriving (Show)
+                 deriving (Show)
 
 load :: LBS.ByteString -> Either LoadError Mesh3D
 load data_in =
@@ -225,13 +225,16 @@ load data_in =
                                 (LBS.drop offset_tex_coords data_in)
             triangles_e = sequence $ runGet (loadTriangles num_tris tex_coords)
                                             (LBS.drop offset_tris data_in)
+            textures = runGet (loadTextures num_skins)
+                              (LBS.drop offset_skins data_in)
 
         if ident == 844121161 then -- "IDP2" as integer.
           return $
-            Mesh3D (skin_width, skin_height)
-            <$> frames_e
-            <*> return tex_coords
-            <*> triangles_e
+            Mesh3D (skin_width, skin_height) <$>
+              frames_e <*>
+              return tex_coords <*>
+              triangles_e <*>
+              return textures
         else
           return $ Left InvalidIdentifier
   in runGet main_func data_in
@@ -318,3 +321,13 @@ loadTriangles remaining_tris tex_coords = do
           triTextureCoordinateIndices = tex_coord_indicies
         }:rest
     Nothing -> return $ Left TextureCoordinatesNotFound:rest
+
+loadTextures :: Int -> Get [Texture]
+loadTextures 0 = return []
+loadTextures remaining_textures = do
+  name <- bytesToString . takeWhile (/= 0) <$> mapM (const getWord8) [1..64]
+
+  remaining <- getRemainingLazyByteString
+  let rest = runGet (loadTextures (remaining_textures - 1)) remaining
+
+  return $ (TexturePath name):rest

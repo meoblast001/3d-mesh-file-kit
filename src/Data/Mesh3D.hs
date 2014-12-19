@@ -20,7 +20,11 @@ module Data.Mesh3D
 , TextureCoordinates(..)
 , Triangle(..)
 , Frame(..)
+, ImageData(..)
+, Texture(..)
 ) where
+
+import qualified Data.ByteString.Lazy as LBS
 
 data Vertex =
   Vertex
@@ -48,10 +52,14 @@ data Frame =
   , frameVertices :: [Vertex] }
   deriving (Show)
 
+newtype ImageData = ImageData LBS.ByteString deriving (Show)
+data Texture = TexturePath FilePath | TextureData ImageData deriving (Show)
+
 data Mesh3D =
   Mesh3D
   { textureSize :: (Int, Int)
   , frames :: [Frame]
   , texCoords :: [TextureCoordinates]
-  , triangles :: [Triangle]}
+  , triangles :: [Triangle]
+  , textures :: [Texture]}
   deriving (Show)
