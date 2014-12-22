@@ -21,6 +21,7 @@ module Data.Mesh3D
 , Triangle(..)
 , Frame(..)
 , ImageData(..)
+, TextureContents(..)
 , Texture(..)
 ) where
 
@@ -53,12 +54,17 @@ data Frame =
   deriving (Show)
 
 newtype ImageData = ImageData LBS.ByteString deriving (Show)
-data Texture = TexturePath FilePath | TextureData ImageData deriving (Show)
+data TextureContents = TexturePath FilePath | TextureData ImageData
+                       deriving (Show)
+data Texture =
+  Texture
+  { texContents :: TextureContents
+  , texSize :: (Int, Int) }
+  deriving (Show)
 
 data Mesh3D =
   Mesh3D
-  { textureSize :: (Int, Int)
-  , frames :: [Frame]
+  { frames :: [Frame]
   , texCoords :: [TextureCoordinates]
   , triangles :: [Triangle]
   , textures :: [Texture]}

@@ -195,7 +195,7 @@ data LoadError = InvalidIdentifier | NormalNotFound | TextureCoordinatesNotFound
 
 load :: LBS.ByteString -> Either LoadError Mesh3D
 load data_in =
-  let main_func = do
+  let mainFunc = do
         ident <- getWord32le
         version <- getWord32le
 
@@ -225,19 +225,19 @@ load data_in =
                                 (LBS.drop offset_tex_coords data_in)
             triangles_e = sequence $ runGet (loadTriangles num_tris tex_coords)
                                             (LBS.drop offset_tris data_in)
-            textures = runGet (loadTextures num_skins)
+            textures = runGet (loadTextures num_skins (skin_width, skin_height))
                               (LBS.drop offset_skins data_in)
 
         if ident == 844121161 then -- "IDP2" as integer.
           return $
-            Mesh3D (skin_width, skin_height) <$>
+            Mesh3D <$>
               frames_e <*>
               return tex_coords <*>
               triangles_e <*>
               return textures
         else
           return $ Left InvalidIdentifier
-  in runGet main_func data_in
+  in runGet mainFunc data_in
 
 loadFrames :: Int -> Int -> Get [Either LoadError Frame]
 loadFrames 0 _ = return []
@@ -322,12 +322,15 @@ loadTriangles remaining_tris tex_coords = do
         }:rest
     Nothing -> return $ Left TextureCoordinatesNotFound:rest
 
-loadTextures :: Int -> Get [Texture]
-loadTextures 0 = return []
-loadTextures remaining_textures = do
+loadTextures :: Int -> (Int, Int) -> Get [Texture]
+loadTextures 0 _ = return []
+loadTextures remaining_textures skin_size = do
   name <- bytesToString . takeWhile (/= 0) <$> mapM (const getWord8) [1..64]
 
   remaining <- getRemainingLazyByteString
-  let rest = runGet (loadTextures (remaining_textures - 1)) remaining
+  let rest = runGet (loadTextures (remaining_textures - 1) skin_size) remaining
 
-  return $ (TexturePath name):rest
+  return $ Texture {
+      texContents = (TexturePath name),
+      texSize = skin_size
+    }:rest
