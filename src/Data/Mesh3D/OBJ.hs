@@ -19,6 +19,7 @@ module Data.Mesh3D.OBJ ( load ) where
 import Control.Applicative
 import Control.Monad
 import qualified Data.ByteString.Lazy as LBS
+import Data.Either
 import Data.Maybe
 import Data.Mesh3D
 import Data.Monoid
@@ -59,20 +60,22 @@ loadLine = do
 
 loadVertexLine :: Parser LineResult
 loadVertexLine = do
-  x <- double2Float <$> double
+  x <- double2Float <$> (either fromInteger id) <$> integerOrDouble
   _ <- spaces
-  y <- double2Float <$> double
+  y <- double2Float <$> (either fromInteger id) <$> integerOrDouble
   _ <- spaces
-  z <- double2Float <$> double
+  z <- double2Float <$> (either fromInteger id) <$> integerOrDouble
   _ <- skipOptional spaces
-  w <- double2Float <$> (fromMaybe 1.0) <$> optional double
+  w <- double2Float <$> (fromMaybe 1.0) <$> optional
+       ((either fromInteger id) <$> integerOrDouble)
   return $ VertexLine x y z w
 
 loadTexCoordLine :: Parser LineResult
 loadTexCoordLine = do
-  u <- double2Float <$> double
+  u <- double2Float <$> (either fromInteger id) <$> integerOrDouble
   _ <- spaces
-  v <- double2Float <$> double
+  v <- double2Float <$> (either fromInteger id) <$> integerOrDouble
   _ <- spaces
-  w <- double2Float <$> (fromMaybe 0.0) <$> optional double
+  w <- double2Float <$> (fromMaybe 0.0) <$> optional
+       ((either fromInteger id) <$> integerOrDouble)
   return $ TexCoordLine u v w
