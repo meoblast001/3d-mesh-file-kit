@@ -42,6 +42,8 @@ load data_in =
 data LineResult =
   VertexLine Float Float Float Float |
   TexCoordLine Float Float Float |
+  NormalLine Float Float Float |
+  FaceLine [(Integer, Maybe Integer, Maybe Integer)] |
   Comment String
   deriving (Show)
 
@@ -50,11 +52,13 @@ comment = Comment <$> (char '#' >> manyTill anyChar (try newline))
 
 loadLine :: Parser LineResult
 loadLine = do
-  line_type <- choice [string "vt", string "v"]
+  line_type <- choice [string "vt", string "vn", string "v", string "f"]
   _ <- spaces
   line_result <- case line_type of
                    "v" -> loadVertexLine
                    "vt" -> loadTexCoordLine
+                   "vn" -> loadNormalLine
+                   "f" -> loadFaceLine
   _ <- skipOptional newline
   return line_result
 
@@ -79,3 +83,25 @@ loadTexCoordLine = do
   w <- double2Float <$> (fromMaybe 0.0) <$> optional
        ((either fromInteger id) <$> integerOrDouble)
   return $ TexCoordLine u v w
+
+loadNormalLine :: Parser LineResult
+loadNormalLine = do
+  x <- double2Float <$> (either fromInteger id) <$> integerOrDouble
+  _ <- spaces
+  y <- double2Float <$> (either fromInteger id) <$> integerOrDouble
+  _ <- spaces
+  z <- double2Float <$> (either fromInteger id) <$> integerOrDouble
+  return $ NormalLine x y z
+
+loadFaceLine :: Parser LineResult
+loadFaceLine =
+  let groupToTriple group =
+        case length group of
+          1 -> return (group !! 0, Nothing, Nothing)
+          2 -> return (group !! 0, Just $ group !! 1, Nothing)
+          3 -> return (group !! 0, Just $ group !! 1, Just $ group !! 2)
+          otherwise ->
+            unexpected "face vertices must contain between 1 and 3 indices"
+  in do
+    groups <- (integer `sepBy1` char '/') `sepBy1` spaces
+    FaceLine <$> (sequence $ map groupToTriple groups)
