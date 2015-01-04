@@ -95,13 +95,12 @@ loadNormalLine = do
 
 loadFaceLine :: Parser LineResult
 loadFaceLine =
-  let groupToTriple group =
-        case length group of
-          1 -> return (group !! 0, Nothing, Nothing)
-          2 -> return (group !! 0, Just $ group !! 1, Nothing)
-          3 -> return (group !! 0, Just $ group !! 1, Just $ group !! 2)
-          otherwise ->
-            unexpected "face vertices must contain between 1 and 3 indices"
+  let invalidGroupMsg = "face vertices must contain between 1 and 3 indices"
+      groupToTriple [] = unexpected invalidGroupMsg
+      groupToTriple [x] = return (x, Nothing, Nothing)
+      groupToTriple [x, y] = return (x, Just y, Nothing)
+      groupToTriple [x, y, z] = return (x, Just y, Just z)
+      groupToTriple _ = unexpected invalidGroupMsg
   in do
     groups <- (integer `sepBy1` char '/') `sepBy1` spaces
     FaceLine <$> (sequence $ map groupToTriple groups)
