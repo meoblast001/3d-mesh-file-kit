@@ -193,6 +193,8 @@ normalVectors = [
 data LoadError = InvalidIdentifier | NormalNotFound | TextureCoordinatesNotFound
                  deriving (Show)
 
+data VertexNormalPair = VertexNormalPair Vertex Normal
+
 load :: LBS.ByteString -> Either LoadError Mesh3D
 load data_in =
   let mainFunc = do
@@ -245,23 +247,28 @@ loadFrames remaining_frames num_vertices = do
   scale <- liftM3 (,,) getFloat32le getFloat32le getFloat32le
   translate <- liftM3 (,,) getFloat32le getFloat32le getFloat32le
   name <- bytesToString . takeWhile (/= 0) <$> mapM (const getWord8) [1..8]
-  vertices_e <- sequence <$> loadVertices num_vertices scale translate
+  vertex_normal_pairs_e <- sequence <$> loadVerticesNormals num_vertices scale
+                                                            translate
 
   remaining <- getRemainingLazyByteString
   let rest = runGet (loadFrames (remaining_frames - 1) num_vertices) remaining
 
-  case vertices_e of
-    Right vertices ->
-      return $ Right Frame {
+  case vertex_normal_pairs_e of
+    Right vertex_normal_pairs ->
+      let verts = map (\(VertexNormalPair v _) -> v) vertex_normal_pairs
+          norms = map (\(VertexNormalPair _ n) -> n) vertex_normal_pairs
+      in return $ Right Frame {
           frameName = name,
-          frameVertices = vertices
+          frameVertices = verts,
+          frameNormals = norms
         }:rest
     Left error -> return $ Left error:rest
 
-loadVertices :: Int -> (Float, Float, Float) -> (Float, Float, Float) ->
-                Get [Either LoadError Vertex]
-loadVertices 0 _ _ = return []
-loadVertices remaining_verts scale@(sx, sy, sz) translate@(tx, ty, tz) = do
+loadVerticesNormals :: Int -> (Float, Float, Float) -> (Float, Float, Float) ->
+                       Get [Either LoadError VertexNormalPair]
+loadVerticesNormals 0 _ _ = return []
+loadVerticesNormals remaining_verts scale@(sx, sy, sz)
+                    translate@(tx, ty, tz) = do
   let transform s_coord t_coord coord = coord * s_coord + t_coord
   position <- liftM3 (,,) (transform sx tx <$> fromIntegral <$> getWord8)
                           (transform sy ty <$> fromIntegral <$> getWord8)
@@ -271,15 +278,12 @@ loadVertices remaining_verts scale@(sx, sy, sz) translate@(tx, ty, tz) = do
                           else Nothing) (fromIntegral <$> getWord8)
 
   remaining <- getRemainingLazyByteString
-  let rest = runGet (loadVertices (remaining_verts - 1) scale translate)
+  let rest = runGet (loadVerticesNormals (remaining_verts - 1) scale translate)
                     remaining
 
   case normal_m of
     Just normal ->
-     return $ Right Vertex {
-          vertPosition = position,
-          vertNormal = normal
-        }:rest
+      return $ (Right $ VertexNormalPair (Vertex position) (Normal normal)):rest
     Nothing -> return $ Left NormalNotFound:rest
 
 loadTexCoords :: Int -> Int -> Int -> Get [TextureCoordinates]
@@ -289,11 +293,9 @@ loadTexCoords remaining_tex_coords skin_width skin_height = do
   t <- fmap (\x -> x / fromIntegral skin_height) $ fromIntegral <$> getWord16le
 
   remaining <- getRemainingLazyByteString
-  return $ TextureCoordinates {
-      texCoordX = s,
-      texCoordY = t
-    }:runGet (loadTexCoords (remaining_tex_coords - 1) skin_width skin_height)
-              remaining
+  return $ (TextureCoordinates (s, t)):
+           runGet (loadTexCoords (remaining_tex_coords - 1)
+                                 skin_width skin_height) remaining
 
 loadTriangles :: Int -> [TextureCoordinates] -> Get [Either LoadError Triangle]
 loadTriangles 0 _ = return []
@@ -317,7 +319,7 @@ loadTriangles remaining_tris tex_coords = do
     Just selected_tex_coords ->
       return $ Right Triangle {
           triVertexIndices = vert_indices,
-          triTextureCoordinates = selected_tex_coords,
+          triNormalIndices = vert_indices,
           triTextureCoordinateIndices = tex_coord_indicies
         }:rest
     Nothing -> return $ Left TextureCoordinatesNotFound:rest

@@ -17,6 +17,7 @@ with this program. If not, see <http://www.gnu.org/licenses/>.
 module Data.Mesh3D
 ( Mesh3D(..)
 , Vertex(..)
+, Normal(..)
 , TextureCoordinates(..)
 , Triangle(..)
 , Frame(..)
@@ -27,30 +28,22 @@ module Data.Mesh3D
 
 import qualified Data.ByteString.Lazy as LBS
 
-data Vertex =
-  Vertex
-  { vertPosition :: (Float, Float, Float)
-  , vertNormal :: (Float, Float, Float) }
-  deriving (Show)
-
-data TextureCoordinates =
-  TextureCoordinates
-  { texCoordX :: Float
-  , texCoordY :: Float }
-  deriving (Show)
+data Vertex = Vertex (Float, Float, Float) deriving (Show, Eq)
+data Normal = Normal (Float, Float, Float) deriving (Show, Eq)
+data TextureCoordinates = TextureCoordinates (Float, Float) deriving (Show, Eq)
 
 data Triangle =
   Triangle
   { triVertexIndices :: (Int, Int, Int)
-  , triTextureCoordinates :: (TextureCoordinates, TextureCoordinates,
-                              TextureCoordinates)
+  , triNormalIndices :: (Int, Int, Int)
   , triTextureCoordinateIndices :: (Int, Int, Int) }
   deriving (Show)
 
 data Frame =
   Frame
   { frameName :: String
-  , frameVertices :: [Vertex] }
+  , frameVertices :: [Vertex]
+  , frameNormals :: [Normal] }
   deriving (Show)
 
 newtype ImageData = ImageData LBS.ByteString deriving (Show)
