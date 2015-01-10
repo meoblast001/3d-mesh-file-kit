@@ -35,13 +35,13 @@ data TextureCoordinates = TextureCoordinates (Float, Float) deriving (Show, Eq)
 data Triangle =
   Triangle
   { triVertexIndices :: (Int, Int, Int)
-  , triNormalIndices :: (Int, Int, Int)
-  , triTextureCoordinateIndices :: (Int, Int, Int) }
+  , triNormalIndices :: Maybe (Int, Int, Int)
+  , triTextureCoordinateIndices :: Maybe (Int, Int, Int) }
   deriving (Show)
 
 data Frame =
   Frame
-  { frameName :: String
+  { frameName :: Maybe String
   , frameVertices :: [Vertex]
   , frameNormals :: [Normal] }
   deriving (Show)
@@ -60,5 +60,5 @@ data Mesh3D =
   { frames :: [Frame]
   , texCoords :: [TextureCoordinates]
   , triangles :: [Triangle]
-  , textures :: [Texture]}
+  , textures :: [Texture] }
   deriving (Show)

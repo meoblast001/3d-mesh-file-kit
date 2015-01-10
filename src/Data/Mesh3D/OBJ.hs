@@ -25,17 +25,19 @@ import Data.Mesh3D
 import Data.Monoid
 import Data.Text.Encoding
 import GHC.Float
+import Text.PrettyPrint.ANSI.Leijen (Doc)
 import Text.Trifecta
 
--- TODO: Return Either LoadError Mesh3D
-load :: LBS.ByteString -> Either String [LineResult]
+data LoadError = ParseFailed Doc deriving Show
+
+load :: LBS.ByteString -> Either LoadError Mesh3D
 load data_in =
   let loadLines = many (choice [comment, loadLine])
       parse = parseByteString loadLines mempty $ LBS.toStrict data_in
   in
     case parse of
-      (Success result) -> Right result
-      (Failure _) -> Left $ show parse
+      (Success result) -> Right $ linesToMesh result
+      (Failure doc) -> Left $ ParseFailed doc
 
 -- Parse the file into a similar data format to what appears in the file.
 
@@ -43,7 +45,7 @@ data LineResult =
   VertexLine Float Float Float Float |
   TexCoordLine Float Float Float |
   NormalLine Float Float Float |
-  FaceLine [(Integer, Maybe Integer, Maybe Integer)] |
+  FaceLine [(Int, Maybe Int, Maybe Int)] |
   Comment String
   deriving (Show)
 
@@ -97,10 +99,48 @@ loadFaceLine :: Parser LineResult
 loadFaceLine =
   let invalidGroupMsg = "face vertices must contain between 1 and 3 indices"
       groupToTriple [] = unexpected invalidGroupMsg
-      groupToTriple [x] = return (x, Nothing, Nothing)
-      groupToTriple [x, y] = return (x, Just y, Nothing)
-      groupToTriple [x, y, z] = return (x, Just y, Just z)
+      groupToTriple [x] = return (fromInteger x, Nothing, Nothing)
+      groupToTriple [x, y] = return (fromInteger x, Just $ fromInteger y,
+                                     Nothing)
+      groupToTriple [x, y, z] = return (fromInteger x, Just $ fromInteger y,
+                                        Just $ fromInteger z)
       groupToTriple _ = unexpected invalidGroupMsg
   in do
     groups <- (integer `sepBy1` char '/') `sepBy1` spaces
     FaceLine <$> (sequence $ map groupToTriple groups)
+
+-- Convert [LineResult] into Mesh3D.
+
+linesToMesh :: [LineResult] -> Mesh3D
+linesToMesh lines =
+  Mesh3D [linesToFrame lines] (linesToTexCoords lines) (linesToTriangles lines)
+         []
+
+linesToFrame :: [LineResult] -> Frame
+linesToFrame lines =
+  let vertices = [Vertex (x, y, z) | line@(VertexLine x y z w) <- lines]
+      normals = [Normal (x, y, z) | line@(NormalLine x y z) <- lines]
+  in Frame Nothing vertices normals
+
+linesToTexCoords :: [LineResult] -> [TextureCoordinates]
+linesToTexCoords lines =
+  [TextureCoordinates (x, y) | line@(TexCoordLine x y z) <- lines]
+
+linesToTriangles :: [LineResult] -> [Triangle]
+linesToTriangles [] = []
+linesToTriangles ((FaceLine vert_triples):rest) =
+  let faceToTriangles (first:second:third:rest) =
+        (first, second, third):(faceToTriangles (first:third:rest))
+      faceToTriangles _ = []
+      getVertex ((x, _, _), (y, _, _), (z, _, _)) = (x, y, z)
+      getTexCoord ((_, may_t1, _), (_, may_t2, _), (_, may_t3, _)) =
+        case (may_t1, may_t2, may_t3) of
+          (Just x, Just y, Just z) -> Just (x, y, z)
+          _ -> Nothing
+      getNormal ((_, _, may_n1), (_, _, may_n2), (_, _, may_n3)) =
+        case (may_n1, may_n2, may_n3) of
+          (Just x, Just y, Just z) -> Just (x, y, z)
+          _ -> Nothing
+  in (map (\tri -> Triangle (getVertex tri) (getNormal tri) (getTexCoord tri)) $
+          faceToTriangles vert_triples) ++ (linesToTriangles rest)
+linesToTriangles (_:rest) = linesToTriangles rest

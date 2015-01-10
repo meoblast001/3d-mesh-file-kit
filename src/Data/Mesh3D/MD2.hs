@@ -258,7 +258,7 @@ loadFrames remaining_frames num_vertices = do
       let verts = map (\(VertexNormalPair v _) -> v) vertex_normal_pairs
           norms = map (\(VertexNormalPair _ n) -> n) vertex_normal_pairs
       in return $ Right Frame {
-          frameName = name,
+          frameName = Just name,
           frameVertices = verts,
           frameNormals = norms
         }:rest
@@ -319,8 +319,8 @@ loadTriangles remaining_tris tex_coords = do
     Just selected_tex_coords ->
       return $ Right Triangle {
           triVertexIndices = vert_indices,
-          triNormalIndices = vert_indices,
-          triTextureCoordinateIndices = tex_coord_indicies
+          triNormalIndices = Just vert_indices,
+          triTextureCoordinateIndices = Just tex_coord_indicies
         }:rest
     Nothing -> return $ Left TextureCoordinatesNotFound:rest
 
